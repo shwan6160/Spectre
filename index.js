@@ -1,4 +1,4 @@
-import chroma from "https://esm.sh/chroma-js";
+import chroma from "https://cdn.jsdelivr.net/npm/chroma-js@3.2.0/index.js/+esm";
 
 // chroma.js scale
 function colorEaseOut(color1, color2, easedT, mode = "rgb", doChromaCorrection = false) {
