@@ -40,20 +40,20 @@ class LinearGradient {
         return scale(pos);
     }
 
-    static morph(gradA, gradB, t) {
+    morph(gradB, t) {
         const easedT = 1 - Math.pow(1 - t, 3);
 
-        const newDeg = gradA.angle + (gradB.angle - gradA.angle) * easedT;
+        const newDeg = this.angle + (gradB.angle - this.angle) * easedT;
 
         const allPositions = new Set([
-            ...gradA.stops.map(s => s.pos),
+            ...this.stops.map(s => s.pos),
             ...gradB.stops.map(s => s.pos)
         ]);
         
         const sortedPositions = Array.from(allPositions).sort((a, b) => a - b);
 
         const newStops = sortedPositions.map(pos => {
-            const colorA = gradA.getColorAt(pos);
+            const colorA = this.getColorAt(pos);
             const colorB = gradB.getColorAt(pos);
 
             const mixedColor = colorEaseOut(colorA, colorB, easedT);
@@ -92,3 +92,8 @@ class LinearGradient {
         return `linear-gradient(${this.angle}deg in ${colorMode}, ${stopStr})`;
     }
 }
+
+export {
+    colorEaseOut,
+    LinearGradient
+};
