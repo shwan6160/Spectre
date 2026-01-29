@@ -32,7 +32,12 @@ class LinearGradient {
     }
 
     getColorAt(pos) {
-        const colors = this.stops.map(s => s.color);
+        const colors = this.stops.map(s => {
+            if (s.color && typeof s.color.css === 'function') {
+                return s.color.css(); 
+            }
+            return s.color;
+        });
         const positions = this.stops.map(s => s.pos);
 
         const scale = chroma.scale(colors).domain(positions).mode('lch');
