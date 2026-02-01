@@ -14,6 +14,95 @@ function colorEaseOut(color1, color2, easedT, mode = "rgb", doChromaCorrection =
     } 
 }
 
+function rgb(...args) {
+    return new Rgb(...args);
+}
+
+class Rgb {
+    constructor(r, g, b, a = 1) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+        this.a = a;
+    }
+
+    get r() {
+        return this._r;
+    }
+
+    set r(value) {
+        this._r = value;
+    }
+
+    get g() {
+        return this._g;
+    }
+
+    set g(value) {
+        this._g = value;
+    }
+
+    get b() {
+        return this._b;
+    }
+
+    set b(value) {
+        this._b = value;
+    }
+
+    get a() {
+        return this._a;
+    }
+
+    set a(value) {
+        this._a = value;
+    }
+}
+
+class Color {
+    constructor(object) {
+        if (object instanceof Rgb) {
+            this.rgb = object;
+        }
+    }
+
+    get lab() {
+        return this._lab;
+    }
+
+    set lab(value) {
+        if (object instanceof Lab) {
+            this._lab = value;
+        } else {
+            throw new Error("Color.lab property must be Lab");
+        }
+    }
+
+    get rgb() {
+        const fn = (...args) => {
+            this.rgb = new Rgb(...args);
+        }
+        return new Proxy(fn, {
+            get: (target, prop) => {
+                return this._rgb[prop];
+            },
+            set: (target, prop, value) => {
+                this._rgb[prop] = value;
+                return true;
+            }
+        });
+    }
+
+    set rgb(value) {
+        if (value instanceof Rgb) {
+            this._rgb = value;
+        } else {
+            throw new Error("Color.rgb property must be Rgb");
+        }
+    }
+
+}
+
 // LinearGradient class
 class LinearGradient {
     constructor(stops = [], angle = 180, mode = "rgb") {
@@ -102,5 +191,6 @@ class LinearGradient {
 
 export {
     colorEaseOut,
+    Color,
     LinearGradient
 };
