@@ -45,31 +45,7 @@ class LinearGradient {
         return scale(pos);
     }
 
-    morph(gradB, t) {
-        const easedT = 1 - Math.pow(1 - t, 3);
-
-        const newDeg = this.angle + (gradB.angle - this.angle) * easedT;
-
-        const allPositions = new Set([
-            ...this.stops.map(s => s.pos),
-            ...gradB.stops.map(s => s.pos)
-        ]);
-        
-        const sortedPositions = Array.from(allPositions).sort((a, b) => a - b);
-
-        const newStops = sortedPositions.map(pos => {
-            const colorA = this.getColorAt(pos);
-            const colorB = gradB.getColorAt(pos);
-
-            const mixedColor = colorEaseOut(colorA, colorB, easedT);
-
-            return { color: mixedColor, pos: pos };
-        });
-
-        return new LinearGradient(newStops, newDeg, gradB.mode);
-    }
-
-    morphScale(gradB) {
+    scale(gradB) {
         return (t) => {
             const easedT = 1 - Math.pow(1 - t, 3);
 
