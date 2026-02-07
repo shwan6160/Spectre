@@ -14,93 +14,105 @@ function colorEaseOut(color1, color2, easedT, mode = "rgb", doChromaCorrection =
     } 
 }
 
-function rgb(...args) {
-    return new Rgb(...args);
-}
+class Percent {
+    #value;
 
-class Rgb {
-    constructor(r, g, b, a = 1) {
-        this.r = r;
-        this.g = g;
-        this.b = b;
-        this.a = a;
+    constructor(value) {
+        this.value = value;
     }
-
-    get r() {
-        return this._r;
+    
+    get value() { return this.#value}
+    set value(value) {
+        if (value instanceof Number) {
+            if (0 <= value <= 100) {
+                this.#value = value;
+            } else {
+                throw new Error("ValueError: Value of Percent() must be at least 0, up to 100.");
+            }
+        } else {
+            throw new TypeError("Value of Percent() must be Number");
+        }
     }
-
-    set r(value) {
-        this._r = value;
+    toString() {
+        return `${this.value}%`;
     }
-
-    get g() {
-        return this._g;
-    }
-
-    set g(value) {
-        this._g = value;
-    }
-
-    get b() {
-        return this._b;
-    }
-
-    set b(value) {
-        this._b = value;
-    }
-
-    get a() {
-        return this._a;
-    }
-
-    set a(value) {
-        this._a = value;
+    toNumber() {
+        return this.value / 100;
     }
 }
+function pct(value){ return new Percent(value) };
 
 class Color {
-    constructor(object) {
-        if (object instanceof Rgb) {
-            this.rgb = object;
-        }
+    #lab = {l: 0, a: 0, b: 0};
+    #alpha = 1;
+
+    constructor() {
+    }
+
+    get alpha() {
+        const parent = this;
+
+        const proxy  = new Proxy(target, {
+            get(target, prop) {
+                return parent.#alpha;
+            },
+            set(target, prop, value) {
+                if (value instanceof Number) {
+                    if(0 <= value <= 1) {
+                        parent.#alpha = pct(value * 100);
+                        return true;
+                    } else {
+                        throw new Error("ValueError: If value of Color.alpha is Number, it must be at least 0, up to 1.");
+                    }
+                } else if ( value instanceof Percent ) {
+                    parent.#alpha = value;
+                } else {
+                    throw new TypeError("Value of Color.alpha must be Percent or Number");
+                }
+            }
+        });
+
+        return proxy;
     }
 
     get lab() {
-        return this._lab;
-    }
+        const parent = this;
 
-    set lab(value) {
-        if (object instanceof Lab) {
-            this._lab = value;
-        } else {
-            throw new Error("Color.lab property must be Lab");
+        // lab() itself is kind of constructor style function.
+        const target = (l, a, b, alpha = 1) => {
+            proxy.l = l;
+            proxy.a = a;
+            proxy.b = b;
+            parent.alpha = alpha;
         }
-    }
 
-    get rgb() {
-        const fn = (...args) => {
-            this.rgb = new Rgb(...args);
+        const css = () => {
+            const string  = `lab(${proxy.l} ${proxy.a} ${proxy.b} / ${proxy.alpha})`;
+
+            return string;
         }
-        return new Proxy(fn, {
-            get: (target, prop) => {
-                return this._rgb[prop];
+
+        const proxy = new Proxy(target, {
+            get(target, prop) {
+                if (prop === "toString") {
+                    return css();
+                } else {
+                    return parent.#lab[prop];
+                }
             },
-            set: (target, prop, value) => {
-                this._rgb[prop] = value;
-                return true;
+            set(target, prop, value) {
+                try {
+                    parent.#lab[prop] = value;
+                    return true;
+                } catch(e) {
+                    console.warn("Color Update Falied.");
+                    throw e;
+                }
             }
         });
-    }
 
-    set rgb(value) {
-        if (value instanceof Rgb) {
-            this._rgb = value;
-        } else {
-            throw new Error("Color.rgb property must be Rgb");
-        }
+        return proxy;
     }
-
 }
 
 // LinearGradient class
@@ -134,29 +146,27 @@ class LinearGradient {
         return scale(pos);
     }
 
-    scale(gradB) {
+    scale(grad) {
         return (t) => {
-            const easedT = 1 - Math.pow(1 - t, 3);
-
-            const newDeg = this.angle + (gradB.angle - this.angle) * easedT;
+            const newDeg = this.angle + (grad.angle - this.angle) * t;
 
             const allPositions = new Set([
                 ...this.stops.map(s => s.pos),
-                ...gradB.stops.map(s => s.pos)
+                ...grad.stops.map(s => s.pos)
             ]);
 
             const sortedPositions = Array.from(allPositions).sort((a, b) => a - b);
 
             const newStops = sortedPositions.map(pos => {
                 const colorA = this.getColorAt(pos);
-                const colorB = gradB.getColorAt(pos);
+                const colorB = grad.getColorAt(pos);
 
-                const mixedColor = colorEaseOut(colorA, colorB, easedT);
+                const mixedColor = colorEaseOut(colorA, colorB, t);
 
                 return { color: mixedColor, pos: pos };
             });
 
-            return new LinearGradient(newStops, newDeg, gradB.mode);
+            return new LinearGradient(newStops, newDeg, grad.mode);
         }
     }
 
