@@ -23,8 +23,8 @@ class Percent {
     
     get value() { return this.#value}
     set value(value) {
-        if (value instanceof Number) {
-            if (0 <= value <= 100) {
+        if (typeof value === 'number') {
+            if (value >= 0 && value <= 100) {
                 this.#value = value;
             } else {
                 throw new Error("ValueError: Value of Percent() must be at least 0, up to 100.");
@@ -50,29 +50,22 @@ class Color {
     }
 
     get alpha() {
-        const parent = this;
+        return this.#alpha;
+    }
 
-        const proxy  = new Proxy(target, {
-            get(target, prop) {
-                return parent.#alpha;
-            },
-            set(target, prop, value) {
-                if (value instanceof Number) {
-                    if(0 <= value <= 1) {
-                        parent.#alpha = pct(value * 100);
-                        return true;
-                    } else {
-                        throw new Error("ValueError: If value of Color.alpha is Number, it must be at least 0, up to 1.");
-                    }
-                } else if ( value instanceof Percent ) {
-                    parent.#alpha = value;
-                } else {
-                    throw new TypeError("Value of Color.alpha must be Percent or Number");
-                }
+    set alpha(value) {
+        if (typeof value === 'number') {
+            if(value >= 0 && value <= 100) {
+                this.#alpha = pct(value * 100);
+                return true;
+            } else {
+                throw new Error("ValueError: If value of Color.alpha is Number, it must be at least 0, up to 1.");
             }
-        });
-
-        return proxy;
+        } else if ( value instanceof Percent ) {
+            this.#alpha = value;
+        } else {
+            throw new TypeError("Value of Color.alpha must be Percent or Number");
+        }
     }
 
     get lab() {
@@ -87,7 +80,7 @@ class Color {
         }
 
         const css = () => {
-            const string  = `lab(${proxy.l} ${proxy.a} ${proxy.b} / ${proxy.alpha})`;
+            const string  = `lab(${proxy.l} ${proxy.a} ${proxy.b} / ${parent.alpha})`;
 
             return string;
         }
