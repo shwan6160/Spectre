@@ -1,8 +1,6 @@
 // Spectre core (no external color library dependency)
 function colorEaseOut(color1, color2, easedT, mode = "rgb", doChromaCorrection = false) {
-    const c1 = Color.from(color1);
-    const c2 = Color.from(color2);
-    const mixed = Color.interpolate(c1, c2, easedT, mode);
+    const mixed = Color.interpolate(color1, color2, easedT, mode);
 
     if (doChromaCorrection && mixed.alpha < c1.alpha) {
         const chromaMultiplier = 1 + easedT;
@@ -37,6 +35,17 @@ class Percent {
     toNumber() {
         return this.value / 100;
     }
+    
+    valueOf() {
+        return this.value;
+    }
+    
+    [Symbol.toPrimitive](hint) {
+        if (hint === 'string') {
+            return `${this.value}%`;
+        }
+        return this.value / 100; // number or default
+    }
 }
 function pct(value){ return new Percent(value) };
 
@@ -54,30 +63,15 @@ class Color {
         return next;
     }
 
-    withAlpha(alpha) {
-        const next = this.clone();
-        next.alpha = alpha;
-        return next;
-    }
-
-    css(mode = 'rgb') {
-        const m = String(mode || 'rgb').toLowerCase();
-        if (m === 'rgb') return this.rgb.toString();
-        if (m === 'lab') return this.lab.toString();
-        if (m === 'lch') return this.lch.toString();
-        if (m === 'oklab') return this.oklab.toString();
-        if (m === 'oklch') return this.oklch.toString();
-        // hsv() is not a standard CSS function, so fall back to rgb.
-        if (m === 'hsv') return this.rgb.toString();
-        return this.rgb.toString();
-    }
-
     // ---------- Internal helpers (SSOT: #lab + #alpha) ----------
     static #clamp(value, min, max) {
         return Math.min(Math.max(value, min), max);
     }
 
     static #isFiniteNumber(value) {
+        if (typeof value === 'function') {
+            return Number.isFinite(Number(value));
+        }
         return typeof value === 'number' && Number.isFinite(value);
     }
 
@@ -105,161 +99,26 @@ class Color {
         return Color.#normHueDeg(a0 + delta * t);
     }
 
-    static #parseAngleToDeg(token) {
-        const s = String(token).trim().toLowerCase();
-        if (s.endsWith('turn')) return parseFloat(s) * 360;
-        if (s.endsWith('rad')) return parseFloat(s) * (180 / Math.PI);
-        if (s.endsWith('grad')) return parseFloat(s) * 0.9;
-        if (s.endsWith('deg')) return parseFloat(s);
-        return parseFloat(s);
-    }
-
-    static #parseCssAlpha(token) {
-        const s = String(token).trim();
-        if (s.endsWith('%')) return Color.#clamp(parseFloat(s) / 100, 0, 1);
-        return Color.#parseAlpha(parseFloat(s));
-    }
-
-    static #splitCssArgs(inner) {
-        // Splits by commas/whitespace but keeps slash separated alpha.
-        return inner
-            .replace(/\s*\/\s*/g, ' / ')
-            .replace(/,/g, ' ')
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean);
-    }
-
-    static from(value) {
-        if (value instanceof Color) return value;
-        if (value && typeof value.css === 'function') {
-            const s = value.css();
-            if (typeof s === 'string') return Color.parse(s);
-        }
-        if (typeof value === 'string') return Color.parse(value);
-        throw new TypeError('Unsupported color input; expected Color or CSS string.');
-    }
-
-    static parse(input) {
-        const raw = String(input).trim();
-        const s = raw.toLowerCase();
-
-        if (s === 'transparent') {
-            const c = new Color();
-            c.rgb(0, 0, 0, 0);
-            return c;
-        }
-
-        if (s.startsWith('#')) {
-            const hex = s.slice(1);
-            const expand = (ch) => ch + ch;
-            let r, g, b, a = 1;
-            if (hex.length === 3 || hex.length === 4) {
-                r = parseInt(expand(hex[0]), 16);
-                g = parseInt(expand(hex[1]), 16);
-                b = parseInt(expand(hex[2]), 16);
-                if (hex.length === 4) a = parseInt(expand(hex[3]), 16) / 255;
-            } else if (hex.length === 6 || hex.length === 8) {
-                r = parseInt(hex.slice(0, 2), 16);
-                g = parseInt(hex.slice(2, 4), 16);
-                b = parseInt(hex.slice(4, 6), 16);
-                if (hex.length === 8) a = parseInt(hex.slice(6, 8), 16) / 255;
-            } else {
-                throw new Error('ValueError: Invalid hex color.');
-            }
-            const c = new Color();
-            c.rgb(r, g, b, Color.#clamp(a, 0, 1));
-            return c;
-        }
-
-        const fnMatch = s.match(/^(rgb|rgba|lab|lch|oklab|oklch)\((.*)\)$/);
-        if (!fnMatch) throw new Error('ValueError: Unsupported CSS color format.');
-
-        const fn = fnMatch[1];
-        const inner = fnMatch[2];
-        const tokens = Color.#splitCssArgs(inner);
-
-        const slashIndex = tokens.indexOf('/');
-        const args = slashIndex >= 0 ? tokens.slice(0, slashIndex) : tokens;
-        const alphaToken = slashIndex >= 0 ? tokens[slashIndex + 1] : undefined;
-        const alpha = alphaToken !== undefined ? Color.#parseCssAlpha(alphaToken) : 1;
-
-        const c = new Color();
-
-        if (fn === 'rgb' || fn === 'rgba') {
-            const parseChan = (t) => {
-                const tt = String(t).trim();
-                if (tt.endsWith('%')) return Color.#clamp(parseFloat(tt) / 100, 0, 1) * 255;
-                return parseFloat(tt);
-            };
-            const r = parseChan(args[0]);
-            const g = parseChan(args[1]);
-            const b = parseChan(args[2]);
-            c.rgb(r, g, b, alpha);
-            return c;
-        }
-
-        if (fn === 'lab') {
-            const lTok = args[0];
-            const l = String(lTok).trim().endsWith('%') ? new Percent(parseFloat(lTok)) : parseFloat(lTok);
-            const a = parseFloat(args[1]);
-            const b = parseFloat(args[2]);
-            c.lab(l, a, b, alpha);
-            return c;
-        }
-
-        if (fn === 'lch') {
-            const lTok = args[0];
-            const l = String(lTok).trim().endsWith('%') ? new Percent(parseFloat(lTok)) : parseFloat(lTok);
-            const cc = parseFloat(args[1]);
-            const h = Color.#parseAngleToDeg(args[2]);
-            c.lch(l, cc, h, alpha);
-            return c;
-        }
-
-        if (fn === 'oklab') {
-            const lTok = args[0];
-            const l = String(lTok).trim().endsWith('%') ? new Percent(parseFloat(lTok)) : parseFloat(lTok);
-            const a = parseFloat(args[1]);
-            const b = parseFloat(args[2]);
-            c.oklab(l, a, b, alpha);
-            return c;
-        }
-
-        if (fn === 'oklch') {
-            const lTok = args[0];
-            const l = String(lTok).trim().endsWith('%') ? new Percent(parseFloat(lTok)) : parseFloat(lTok);
-            const cc = parseFloat(args[1]);
-            const h = Color.#parseAngleToDeg(args[2]);
-            c.oklch(l, cc, h, alpha);
-            return c;
-        }
-
-        throw new Error('ValueError: Unsupported CSS color format.');
-    }
-
     static interpolate(colorA, colorB, t, mode = 'rgb') {
-        const a = Color.from(colorA);
-        const b = Color.from(colorB);
         const tt = Color.#clamp(t, 0, 1);
         const m = String(mode || 'rgb').toLowerCase();
 
         const out = new Color();
-        const outAlpha = Color.#lerp(a.alpha, b.alpha, tt);
+        const outAlpha = Color.#lerp(colorA.alpha, colorB.alpha, tt);
 
         if (m === 'lab') {
             out.#setLab({
-                l: Color.#lerp(a.#lab.l, b.#lab.l, tt),
-                a: Color.#lerp(a.#lab.a, b.#lab.a, tt),
-                b: Color.#lerp(a.#lab.b, b.#lab.b, tt)
+                l: Color.#lerp(colorA.#lab.l, colorB.#lab.l, tt),
+                a: Color.#lerp(colorA.#lab.a, colorB.#lab.a, tt),
+                b: Color.#lerp(colorA.#lab.b, colorB.#lab.b, tt)
             });
             out.alpha = outAlpha;
             return out;
         }
 
         if (m === 'lch') {
-            const la = Color.#labToLch(a.#lab);
-            const lb = Color.#labToLch(b.#lab);
+            const la = Color.#labToLch(colorA.#lab);
+            const lb = Color.#labToLch(colorB.#lab);
             out.lch(
                 Color.#lerp(la.l, lb.l, tt) / 100,
                 Color.#lerp(la.c, lb.c, tt),
@@ -270,8 +129,8 @@ class Color {
         }
 
         if (m === 'oklab') {
-            const oa = Color.#labToOklab(a.#lab);
-            const ob = Color.#labToOklab(b.#lab);
+            const oa = Color.#labToOklab(colorA.#lab);
+            const ob = Color.#labToOklab(colorB.#lab);
             out.oklab(
                 Color.#lerp(oa.l, ob.l, tt),
                 Color.#lerp(oa.a, ob.a, tt),
@@ -282,8 +141,8 @@ class Color {
         }
 
         if (m === 'oklch') {
-            const oa = Color.#oklabToOklch(Color.#labToOklab(a.#lab));
-            const ob = Color.#oklabToOklch(Color.#labToOklab(b.#lab));
+            const oa = Color.#oklabToOklch(Color.#labToOklab(colorA.#lab));
+            const ob = Color.#oklabToOklch(Color.#labToOklab(colorB.#lab));
             out.oklch(
                 Color.#lerp(oa.l, ob.l, tt),
                 Color.#lerp(oa.c, ob.c, tt),
@@ -294,8 +153,8 @@ class Color {
         }
 
         if (m === 'hsv') {
-            const ha = Color.#rgbToHsv(Color.#labToRgb(a.#lab));
-            const hb = Color.#rgbToHsv(Color.#labToRgb(b.#lab));
+            const ha = Color.#rgbToHsv(Color.#labToRgb(colorA.#lab));
+            const hb = Color.#rgbToHsv(Color.#labToRgb(colorB.#lab));
             out.hsv(
                 Color.#lerpAngleDeg(ha.h, hb.h, tt),
                 Color.#lerp(ha.s, hb.s, tt),
@@ -306,8 +165,8 @@ class Color {
         }
 
         // rgb (default)
-        const ra = Color.#labToRgb(a.#lab);
-        const rb = Color.#labToRgb(b.#lab);
+        const ra = Color.#labToRgb(colorA.#lab);
+        const rb = Color.#labToRgb(colorB.#lab);
         out.rgb(
             Color.#lerp(ra.r, rb.r, tt),
             Color.#lerp(ra.g, rb.g, tt),
@@ -319,36 +178,22 @@ class Color {
 
     static scale(colors = []) {
         const state = {
-            colors: colors.map(c => Color.from(c)),
-            domain: null,
+            colors: colors,
             mode: 'rgb'
         };
 
-        const fn = (x) => {
+        const fn = (value) => {
             if (state.colors.length === 0) throw new Error('ValueError: scale() requires at least one color.');
             if (state.colors.length === 1) return state.colors[0].clone();
 
-            const dom = state.domain ?? state.colors.map((_, i) => i / (state.colors.length - 1));
-            if (dom.length !== state.colors.length) {
-                throw new Error('ValueError: domain length must match colors length.');
-            }
+            const t = Color.#parseUnit01(value);
 
-            const v = x;
-            if (v <= dom[0]) return state.colors[0].clone();
-            if (v >= dom[dom.length - 1]) return state.colors[state.colors.length - 1].clone();
+            const n = state.colors.length;
+            const scaled = t * (n - 1);
+            const i = Math.min(Math.floor(scaled), n - 2);
+            const u = scaled - i;
 
-            let i = 0;
-            while (i < dom.length - 1 && !(v >= dom[i] && v <= dom[i + 1])) i++;
-
-            const d0 = dom[i];
-            const d1 = dom[i + 1];
-            const u = d1 === d0 ? 0 : (v - d0) / (d1 - d0);
             return Color.interpolate(state.colors[i], state.colors[i + 1], u, state.mode);
-        };
-
-        fn.domain = (domain) => {
-            state.domain = domain;
-            return fn;
         };
 
         fn.mode = (mode) => {
@@ -628,11 +473,21 @@ class Color {
     }
 
     get alpha() {
-        return this.#alpha;
+        const parent = this;
+        const fn = function(value) {
+            const next = parent.clone();
+            next.alpha = value;
+            return next;
+        };
+        fn.valueOf = () => parent.#alpha;
+        fn.toString = () => String(parent.#alpha);
+        fn[Symbol.toPrimitive] = () => parent.#alpha;
+        return fn;
     }
 
     set alpha(value) {
-        this.#alpha = Color.#parseAlpha(value);
+        const v = (typeof value === 'function') ? Number(value) : value;
+        this.#alpha = Color.#parseAlpha(v);
         return true;
     }
 
@@ -657,7 +512,7 @@ class Color {
 
         const proxy = new Proxy(target, {
             get(target, prop) {
-                if (prop === "toString") return css;
+                if (prop === "toString" || prop === "css") return css;
                 if (prop === Symbol.toPrimitive) return () => css();
                 if (prop === 'alpha') return parent.alpha;
                 if (prop === 'l') return parent.#lab.l / 100;
@@ -692,7 +547,7 @@ class Color {
 
         const proxy = new Proxy(proxyTarget, {
             get(target, prop) {
-                if (prop === 'toString') return model.toString.bind(model);
+                if (prop === 'toString' || prop === 'css') return model.toString.bind(model);
                 if (prop === Symbol.toPrimitive) return () => model.toString.call(model);
                 return model.get(prop);
             },
@@ -1017,14 +872,14 @@ class LinearGradient {
     }
 
     getColorAt(pos) {
-        const colors = this.stops.map(s => Color.from(s.color));
+        const colors = this.stops.map(s => s.color);
         const positions = this.stops.map(s => s.pos);
 
-        const scale = Color.scale(colors).domain(positions).mode(this.mode);
+        const scale = Color.scale(colors).mode(this.mode);
         return scale(pos);
     }
 
-    scale(grad) {
+    chainScale(grad) {
         return (t) => {
             const newDeg = this.angle + (grad.angle - this.angle) * t;
 
@@ -1033,7 +888,7 @@ class LinearGradient {
                 ...grad.stops.map(s => s.pos)
             ]);
 
-            const sortedPositions = Array.from(allPositions).sort((a, b) => a - b);
+            const sortedPositions = Array.from(allPositions).sort((a, b) =>  a - b);
 
             const newStops = sortedPositions.map(pos => {
                 const colorA = this.getColorAt(pos);
@@ -1051,8 +906,8 @@ class LinearGradient {
         const colorMode = (mode == '') ? this.mode : mode;
         if (this.stops.length === 0) return 'none';
         const stopStr = this.stops.map(stop => {
-            const c = (stop.color && typeof stop.color.css === 'function')
-                ? stop.color.css(colorMode)
+            const c = (stop.color && typeof stop.color.clone === 'function')
+                ? stop.color.rgb.css()
                 : stop.color;
 
             let positions = '';
@@ -1078,6 +933,8 @@ class LinearGradient {
 
 export {
     colorEaseOut,
+    pct,
+    Percent,
     Color,
     LinearGradient
 };
