@@ -1,3 +1,5 @@
+import { clamp } from "./utils";
+
 // Spectre core (no external color library dependency)
 function colorEaseOut(color1, color2, easedT, mode = "rgb", doChromaCorrection = false) {
     const mixed = Color.interpolate(color1, color2, easedT, mode);
