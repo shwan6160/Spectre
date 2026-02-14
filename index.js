@@ -1,22 +1,22 @@
-import { clamp, isFiniteNumber, normHueDeg, formatNumber, lerp, lerpAngleDeg } from "./utils";
+import { clamp, isFiniteNumber, normHueDeg, formatNumber, lerp, lerpAngleDeg } from "./utils.js";
 import {
     labToRgb, rgbToLab,
     labToLch, lchToLab,
     rgbToHsv, hsvToRgb,
     labToOklab, oklabToLab,
     oklabToOklch, oklchToOklab
-} from "./colorConverter";
+} from "./colorConverter.js";
 
 // Spectre core (no external color library dependency)
 function colorEaseOut(color1, color2, easedT, mode = "rgb", doChromaCorrection = false) {
     const mixed = Color.interpolate(color1, color2, easedT, mode);
 
-    if (doChromaCorrection && mixed.alpha < c1.alpha) {
+    if (doChromaCorrection && mixed.alpha < color1.alpha) {
         const chromaMultiplier = 1 + easedT;
         mixed.oklch.c = Math.min(mixed.oklch.c * chromaMultiplier, 0.55);
     }
 
-    return mixed.css(mode);
+    return mixed[mode].css();
 }
 
 class Percent {
@@ -274,7 +274,7 @@ class Color {
                     else parent.#lab[prop] = value;
                     return true;
                 } catch(e) {
-                    console.warn("Color Update Falied.");
+                    console.warn("Color Update Failed.");
                     throw e;
                 }
             }
@@ -649,7 +649,7 @@ class LinearGradient {
     }
 
     css(mode = '') {
-        const colorMode = (mode == '') ? this.mode : mode;
+        const colorMode = (mode === '') ? this.mode : mode;
         if (this.stops.length === 0) return 'none';
         const stopStr = this.stops.map(stop => {
             const c = (stop.color && typeof stop.color.clone === 'function')
@@ -662,7 +662,7 @@ class LinearGradient {
             const formatPos = (val) => (val <= 1 ? val * 100 : val) + '%';
 
             if (Array.isArray(stop.pos)) {
-                if (length(stop.pos) > 2) {
+                if (stop.pos.length > 2) {
                     console.error('Gradient stop\'s positions must be less then two');
                 }
                 positions = stop.pos.map(formatPos).join(' ');

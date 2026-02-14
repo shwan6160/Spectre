@@ -1,4 +1,4 @@
-import { clamp, normHueDeg } from "./utils";
+import { clamp, normHueDeg } from "./utils.js";
 
 // ---------- Constants (D65 illuminant) ----------
 const WHITE_D65 = { X: 95.047, Y: 100.0, Z: 108.883 };
