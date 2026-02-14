@@ -696,33 +696,96 @@ class LinearGradient {
     }
 
     getColorAt(pos) {
-        const colors = this.stops.map(s => s.color);
-        const positions = this.stops.map(s => s.pos);
+        const stops = this.stops; // pre-sorted by pos
+        const n = stops.length;
+        if (n === 0) return null;
+        if (n === 1) return stops[0].color.clone();
 
-        const scale = Color.scale(colors).mode(this.mode);
-        return scale(pos);
+        if (pos <= stops[0].pos) return stops[0].color.clone();
+        if (pos >= stops[n - 1].pos) return stops[n - 1].color.clone();
+
+        // Search right-to-left: first segment whose start <= pos.
+        // For hard stops (p0 === p1) this naturally resolves to the right-side color.
+        for (let i = n - 2; i >= 0; i--) {
+            const p0 = stops[i].pos;
+            const p1 = stops[i + 1].pos;
+
+            if (pos >= p0) {
+                if (p0 === p1) {
+                    // Hard stop – return the right-side colour
+                    return stops[i + 1].color.clone();
+                }
+                const localT = (pos - p0) / (p1 - p0);
+                return Color.interpolate(stops[i].color, stops[i + 1].color, localT, this.mode);
+            }
+        }
+
+        return stops[0].color.clone();
+    }
+
+    /** @private Return the nth stop colour at an exact position (hard-stop aware) */
+    _getColorAtNth(pos, nth) {
+        let count = 0;
+        for (let i = 0; i < this.stops.length; i++) {
+            if (this.stops[i].pos === pos) {
+                if (count === nth) return this.stops[i].color.clone();
+                count++;
+            }
+        }
+        // Fewer stops than requested – fall back to interpolated value
+        return this.getColorAt(pos);
     }
 
     chainScale(grad) {
         return (t) => {
             const newDeg = this.angle + (grad.angle - this.angle) * t;
+            const mode = grad.mode ?? this.mode;
 
-            const allPositions = new Set([
+            // Fast path: identical structure → interpolate stop-by-stop (preserves hard stops)
+            if (this.stops.length === grad.stops.length) {
+                const newStops = this.stops.map((stopA, i) => {
+                    const stopB = grad.stops[i];
+                    const pos = stopA.pos + (stopB.pos - stopA.pos) * t;
+                    const color = Color.interpolate(stopA.color, stopB.color, t, mode);
+                    return { color, pos };
+                });
+                return new LinearGradient(newStops, newDeg, mode);
+            }
+
+            // General case: merge positions, preserving hard-stop duplicates
+            const countAt = (stops, p) => {
+                let c = 0;
+                for (const s of stops) if (s.pos === p) c++;
+                return c;
+            };
+
+            const uniquePos = new Set([
                 ...this.stops.map(s => s.pos),
                 ...grad.stops.map(s => s.pos)
             ]);
 
-            const sortedPositions = Array.from(allPositions).sort((a, b) =>  a - b);
+            const sortedPositions = [];
+            for (const p of [...uniquePos].sort((a, b) => a - b)) {
+                const maxCount = Math.max(countAt(this.stops, p), countAt(grad.stops, p));
+                for (let k = 0; k < maxCount; k++) sortedPositions.push(p);
+            }
 
+            const occA = new Map();
+            const occB = new Map();
             const newStops = sortedPositions.map(pos => {
-                const colorA = this.getColorAt(pos);
-                const colorB = grad.getColorAt(pos);
+                const iA = occA.get(pos) || 0;
+                const iB = occB.get(pos) || 0;
+                occA.set(pos, iA + 1);
+                occB.set(pos, iB + 1);
 
-                const mixedColor = Color.interpolate(colorA, colorB, t, grad.mode ?? this.mode);
-                return { color: mixedColor, pos: pos };
+                const colorA = this._getColorAtNth(pos, iA);
+                const colorB = grad._getColorAtNth(pos, iB);
+
+                const color = Color.interpolate(colorA, colorB, t, mode);
+                return { color, pos };
             });
 
-            return new LinearGradient(newStops, newDeg, grad.mode);
+            return new LinearGradient(newStops, newDeg, mode);
         }
     }
 
