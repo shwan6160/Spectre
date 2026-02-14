@@ -611,6 +611,84 @@ class LinearGradient {
         this.stops.sort((a, b) => a.pos - b.pos);
     }
 
+    /**
+     * linear-gradient 문자열 파서
+     * @param {string} cssString - "linear-gradient(180deg, #fff 0%, #000 100%)" 형식
+     * @returns {LinearGradient}
+     */
+    static fromString(cssString) {
+        const match = cssString.match(/linear-gradient\((.*)\)/i);
+        if (!match) return null;
+
+        let content = match[1];
+
+        const parts = content.split(/,(?![^(]*\))/).map(p => p.trim());
+
+        let angle = 180;
+        let mode = 'rgb';
+        let stopsStartIdx = 0;
+
+        const firstPart = parts[0];
+
+        if (firstPart.startsWith('in ')) {
+            mode = firstPart.replace('in ', '').trim();
+            stopsStartIdx = 1;
+            if (parts[1] && (parts[1].includes('deg') || parts[1].includes('to '))) {
+                angle = this._parseAngle(parts[1]);
+                stopsStartIdx = 2;
+            }
+        } else if (firstPart.includes('deg') || firstPart.includes('to ')) {
+            angle = this._parseAngle(firstPart);
+            stopsStartIdx = 1;
+        }
+
+
+        const rawStops = parts.slice(stopsStartIdx);
+        const stops = rawStops.map((stopStr, idx) => {
+            const stopMatch = stopStr.match(/(.*)\s+([\d.]+(?:%|px|deg)?)$/);
+
+            let colorStr, pos;
+            if (stopMatch) {
+                colorStr = stopMatch[1].trim();
+                pos = parseFloat(stopMatch[2]) / (stopMatch[2].includes('%') ? 100 : 1);
+            } else {
+                colorStr = stopStr.trim();
+                pos = idx === 0 ? 0 : (idx === rawStops.length - 1 ? 1 : null);
+            }
+
+            return { color: colorStr, pos: pos };
+        });
+
+        // 5. 누락된 위치(null) 자동 계산 (균등 배분)
+        this._fillMissingPositions(stops);
+
+        return new LinearGradient(stops, angle, mode);
+    }
+
+    /** @private 각도/방향 문자열을 숫자로 변환 */
+    static _parseAngle(angleStr) {
+        if (angleStr.includes('deg')) return parseFloat(angleStr);
+        const directions = {
+            'to top': 0, 'to right': 90, 'to bottom': 180, 'to left': 270,
+            'to top right': 45, 'to bottom right': 135, 'to bottom left': 225, 'to top left': 315
+        };
+        return directions[angleStr.toLowerCase()] ?? 180;
+    }
+
+    /** @private 위치값이 없는 스톱들에 균등한 위치 할당 */
+    static _fillMissingPositions(stops) {
+        for (let i = 0; i < stops.length; i++) {
+            if (stops[i].pos === null) {
+                let j = i + 1;
+                while (stops[j].pos === null) j++;
+                const step = (stops[j].pos - stops[i - 1].pos) / (j - (i - 1));
+                for (let k = i; k < j; k++) {
+                    stops[k].pos = stops[i - 1].pos + step * (k - (i - 1));
+                }
+            }
+        }
+    }
+
     addStop(color, pos) {
         this.stops.push({ color, pos });
         this.stops.sort((a, b) => a.pos - b.pos);
