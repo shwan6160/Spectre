@@ -1,4 +1,11 @@
-import { clamp } from "./utils";
+import { clamp, isFiniteNumber, normHueDeg, formatNumber, lerp, lerpAngleDeg } from "./utils";
+import {
+    labToRgb, rgbToLab,
+    labToLch, lchToLab,
+    rgbToHsv, hsvToRgb,
+    labToOklab, oklabToLab,
+    oklabToOklch, oklchToOklab
+} from "./colorConverter";
 
 // Spectre core (no external color library dependency)
 function colorEaseOut(color1, color2, easedT, mode = "rgb", doChromaCorrection = false) {
@@ -66,113 +73,79 @@ class Color {
     }
 
     // ---------- Internal helpers (SSOT: #lab + #alpha) ----------
-    static #clamp(value, min, max) {
-        return Math.min(Math.max(value, min), max);
-    }
-
-    static #isFiniteNumber(value) {
-        if (typeof value === 'function') {
-            return Number.isFinite(Number(value));
-        }
-        return typeof value === 'number' && Number.isFinite(value);
-    }
-
-    static #normHueDeg(deg) {
-        if (!Color.#isFiniteNumber(deg)) return 0;
-        const x = deg % 360;
-        return x < 0 ? x + 360 : x;
-    }
-
-    static #formatNumber(value, decimals = 4) {
-        if (!Color.#isFiniteNumber(value)) return '0';
-        const pow = 10 ** decimals;
-        const rounded = Math.round(value * pow) / pow;
-        return String(rounded);
-    }
-
-    static #lerp(a, b, t) {
-        return a + (b - a) * t;
-    }
-
-    static #lerpAngleDeg(a, b, t) {
-        const a0 = Color.#normHueDeg(a);
-        const b0 = Color.#normHueDeg(b);
-        const delta = ((((b0 - a0) % 360) + 540) % 360) - 180;
-        return Color.#normHueDeg(a0 + delta * t);
-    }
 
     static interpolate(colorA, colorB, t, mode = 'rgb') {
-        const tt = Color.#clamp(t, 0, 1);
+        const tt = clamp(t, 0, 1);
         const m = String(mode || 'rgb').toLowerCase();
 
         const out = new Color();
-        const outAlpha = Color.#lerp(colorA.alpha, colorB.alpha, tt);
+        const outAlpha = lerp(colorA.alpha, colorB.alpha, tt);
 
         if (m === 'lab') {
             out.#setLab({
-                l: Color.#lerp(colorA.#lab.l, colorB.#lab.l, tt),
-                a: Color.#lerp(colorA.#lab.a, colorB.#lab.a, tt),
-                b: Color.#lerp(colorA.#lab.b, colorB.#lab.b, tt)
+                l: lerp(colorA.#lab.l, colorB.#lab.l, tt),
+                a: lerp(colorA.#lab.a, colorB.#lab.a, tt),
+                b: lerp(colorA.#lab.b, colorB.#lab.b, tt)
             });
             out.alpha = outAlpha;
             return out;
         }
 
         if (m === 'lch') {
-            const la = Color.#labToLch(colorA.#lab);
-            const lb = Color.#labToLch(colorB.#lab);
+            const la = labToLch(colorA.#lab);
+            const lb = labToLch(colorB.#lab);
             out.lch(
-                Color.#lerp(la.l, lb.l, tt) / 100,
-                Color.#lerp(la.c, lb.c, tt),
-                Color.#lerpAngleDeg(la.h, lb.h, tt),
+                lerp(la.l, lb.l, tt) / 100,
+                lerp(la.c, lb.c, tt),
+                lerpAngleDeg(la.h, lb.h, tt),
                 outAlpha
             );
             return out;
         }
 
         if (m === 'oklab') {
-            const oa = Color.#labToOklab(colorA.#lab);
-            const ob = Color.#labToOklab(colorB.#lab);
+            const oa = labToOklab(colorA.#lab);
+            const ob = labToOklab(colorB.#lab);
             out.oklab(
-                Color.#lerp(oa.l, ob.l, tt),
-                Color.#lerp(oa.a, ob.a, tt),
-                Color.#lerp(oa.b, ob.b, tt),
+                lerp(oa.l, ob.l, tt),
+                lerp(oa.a, ob.a, tt),
+                lerp(oa.b, ob.b, tt),
                 outAlpha
             );
             return out;
         }
 
         if (m === 'oklch') {
-            const oa = Color.#oklabToOklch(Color.#labToOklab(colorA.#lab));
-            const ob = Color.#oklabToOklch(Color.#labToOklab(colorB.#lab));
+            const oa = oklabToOklch(labToOklab(colorA.#lab));
+            const ob = oklabToOklch(labToOklab(colorB.#lab));
             out.oklch(
-                Color.#lerp(oa.l, ob.l, tt),
-                Color.#lerp(oa.c, ob.c, tt),
-                Color.#lerpAngleDeg(oa.h, ob.h, tt),
+                lerp(oa.l, ob.l, tt),
+                lerp(oa.c, ob.c, tt),
+                lerpAngleDeg(oa.h, ob.h, tt),
                 outAlpha
             );
             return out;
         }
 
         if (m === 'hsv') {
-            const ha = Color.#rgbToHsv(Color.#labToRgb(colorA.#lab));
-            const hb = Color.#rgbToHsv(Color.#labToRgb(colorB.#lab));
+            const ha = rgbToHsv(labToRgb(colorA.#lab));
+            const hb = rgbToHsv(labToRgb(colorB.#lab));
             out.hsv(
-                Color.#lerpAngleDeg(ha.h, hb.h, tt),
-                Color.#lerp(ha.s, hb.s, tt),
-                Color.#lerp(ha.v, hb.v, tt),
+                lerpAngleDeg(ha.h, hb.h, tt),
+                lerp(ha.s, hb.s, tt),
+                lerp(ha.v, hb.v, tt),
                 outAlpha
             );
             return out;
         }
 
         // rgb (default)
-        const ra = Color.#labToRgb(colorA.#lab);
-        const rb = Color.#labToRgb(colorB.#lab);
+        const ra = labToRgb(colorA.#lab);
+        const rb = labToRgb(colorB.#lab);
         out.rgb(
-            Color.#lerp(ra.r, rb.r, tt),
-            Color.#lerp(ra.g, rb.g, tt),
-            Color.#lerp(ra.b, rb.b, tt),
+            lerp(ra.r, rb.r, tt),
+            lerp(ra.g, rb.g, tt),
+            lerp(ra.b, rb.b, tt),
             outAlpha
         );
         return out;
@@ -188,7 +161,7 @@ class Color {
             if (state.colors.length === 0) throw new Error('ValueError: scale() requires at least one color.');
             if (state.colors.length === 1) return state.colors[0].clone();
 
-            const t = Color.#parseUnit01(value);
+            const t = Color.#parseValue01(value);
 
             const n = state.colors.length;
             const scaled = t * (n - 1);
@@ -208,19 +181,19 @@ class Color {
 
     static #parseAlpha(value) {
         if (value instanceof Percent) {
-            return Color.#clamp(value.toNumber(), 0, 1);
+            return clamp(value.toNumber(), 0, 1);
         }
-        if (Color.#isFiniteNumber(value)) {
+        if (isFiniteNumber(value)) {
             if (value >= 0 && value <= 1) return value;
             throw new Error("ValueError: Alpha number must be in [0,1]. Use Percent for percentages.");
         }
         throw new TypeError("Value of Color.alpha must be Percent or Number");
     }
 
-    static #parseUnit01(value) {
+    static #parseValue01(value) {
         // Used for s/v (HSV) and OKLab lightness where numbers are commonly 0..1; accept Percent.
-        if (value instanceof Percent) return Color.#clamp(value.toNumber(), 0, 1);
-        if (Color.#isFiniteNumber(value)) {
+        if (value instanceof Percent) return clamp(value.toNumber(), 0, 1);
+        if (isFiniteNumber(value)) {
             if (value >= 0 && value <= 1) return value;
             throw new Error("ValueError: Expected number in [0,1]. Use Percent for percentages.");
         }
@@ -230,240 +203,12 @@ class Color {
     static #parseLightness100(value) {
         // Input parser for CIE Lab/LCH lightness (SSOT is 0..100).
         // Rule: if Number, must be 0..1 (fraction). If Percent, uses 0..100.
-        if (value instanceof Percent) return Color.#clamp(value.value, 0, 100);
-        if (Color.#isFiniteNumber(value)) {
+        if (value instanceof Percent) return clamp(value.value, 0, 100);
+        if (isFiniteNumber(value)) {
             if (value >= 0 && value <= 1) return value * 100;
             throw new Error("ValueError: Lightness number must be in [0,1]. Use Percent for percentages.");
         }
         throw new TypeError("Value must be Percent or Number");
-    }
-
-    // ---------- Color conversion math (D65) ----------
-    static #WHITE_D65 = { X: 95.047, Y: 100.0, Z: 108.883 };
-    static #EPSILON = 216 / 24389;
-    static #KAPPA = 24389 / 27;
-
-    static #labToXyz({ l, a, b }) {
-        const fy = (l + 16) / 116;
-        const fx = a / 500 + fy;
-        const fz = fy - b / 200;
-
-        const finv = (t) => {
-            const t3 = t ** 3;
-            return t3 > Color.#EPSILON ? t3 : (116 * t - 16) / Color.#KAPPA;
-        };
-
-        const xr = finv(fx);
-        // Standard inverse for Y uses L directly below the linear threshold.
-        const yr = l > (Color.#KAPPA * Color.#EPSILON) ? (fy ** 3) : (l / Color.#KAPPA);
-        const zr = finv(fz);
-
-        return {
-            X: xr * Color.#WHITE_D65.X,
-            Y: yr * Color.#WHITE_D65.Y,
-            Z: zr * Color.#WHITE_D65.Z
-        };
-    }
-
-    static #xyzToLab({ X, Y, Z }) {
-        const xr = X / Color.#WHITE_D65.X;
-        const yr = Y / Color.#WHITE_D65.Y;
-        const zr = Z / Color.#WHITE_D65.Z;
-
-        const f = (t) => {
-            return t > Color.#EPSILON ? Math.cbrt(t) : (Color.#KAPPA * t + 16) / 116;
-        };
-
-        const fx = f(xr);
-        const fy = f(yr);
-        const fz = f(zr);
-
-        return {
-            l: 116 * fy - 16,
-            a: 500 * (fx - fy),
-            b: 200 * (fy - fz)
-        };
-    }
-
-    static #linearToSrgb(u) {
-        if (u <= 0.0031308) return 12.92 * u;
-        return 1.055 * (u ** (1 / 2.4)) - 0.055;
-    }
-
-    static #srgbToLinear(u) {
-        if (u <= 0.04045) return u / 12.92;
-        return ((u + 0.055) / 1.055) ** 2.4;
-    }
-
-    static #xyzToLinearRgb({ X, Y, Z }) {
-        // XYZ expected in 0..100
-        const x = X / 100;
-        const y = Y / 100;
-        const z = Z / 100;
-
-        return {
-            r: 3.2406 * x + (-1.5372) * y + (-0.4986) * z,
-            g: (-0.9689) * x + 1.8758 * y + 0.0415 * z,
-            b: 0.0557 * x + (-0.2040) * y + 1.0570 * z
-        };
-    }
-
-    static #linearRgbToXyz({ r, g, b }) {
-        // Returns XYZ in 0..100 (D65)
-        const x = 0.4124 * r + 0.3576 * g + 0.1805 * b;
-        const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        const z = 0.0193 * r + 0.1192 * g + 0.9505 * b;
-        return { X: x * 100, Y: y * 100, Z: z * 100 };
-    }
-
-    static #labToRgb({ l, a, b }) {
-        const xyz = Color.#labToXyz({ l, a, b });
-        const lin = Color.#xyzToLinearRgb(xyz);
-
-        const sr = Color.#linearToSrgb(lin.r);
-        const sg = Color.#linearToSrgb(lin.g);
-        const sb = Color.#linearToSrgb(lin.b);
-
-        return {
-            r: Color.#clamp(sr, 0, 1) * 255,
-            g: Color.#clamp(sg, 0, 1) * 255,
-            b: Color.#clamp(sb, 0, 1) * 255
-        };
-    }
-
-    static #rgbToLab({ r, g, b }) {
-        const sr = Color.#clamp(r / 255, 0, 1);
-        const sg = Color.#clamp(g / 255, 0, 1);
-        const sb = Color.#clamp(b / 255, 0, 1);
-
-        const lin = {
-            r: Color.#srgbToLinear(sr),
-            g: Color.#srgbToLinear(sg),
-            b: Color.#srgbToLinear(sb)
-        };
-
-        const xyz = Color.#linearRgbToXyz(lin);
-        return Color.#xyzToLab(xyz);
-    }
-
-    static #labToLch({ l, a, b }) {
-        const c = Math.sqrt(a * a + b * b);
-        const h = Color.#normHueDeg(Math.atan2(b, a) * (180 / Math.PI));
-        return { l, c, h };
-    }
-
-    static #lchToLab({ l, c, h }) {
-        const hr = Color.#normHueDeg(h) * (Math.PI / 180);
-        return {
-            l,
-            a: c * Math.cos(hr),
-            b: c * Math.sin(hr)
-        };
-    }
-
-    static #rgbToHsv({ r, g, b }) {
-        const rr = Color.#clamp(r / 255, 0, 1);
-        const gg = Color.#clamp(g / 255, 0, 1);
-        const bb = Color.#clamp(b / 255, 0, 1);
-
-        const max = Math.max(rr, gg, bb);
-        const min = Math.min(rr, gg, bb);
-        const delta = max - min;
-
-        let h = 0;
-        if (delta !== 0) {
-            if (max === rr) h = 60 * (((gg - bb) / delta) % 6);
-            else if (max === gg) h = 60 * (((bb - rr) / delta) + 2);
-            else h = 60 * (((rr - gg) / delta) + 4);
-        }
-        h = Color.#normHueDeg(h);
-
-        const s = max === 0 ? 0 : delta / max;
-        const v = max;
-        return { h, s, v };
-    }
-
-    static #hsvToRgb({ h, s, v }) {
-        const hh = Color.#normHueDeg(h);
-        const ss = Color.#clamp(s, 0, 1);
-        const vv = Color.#clamp(v, 0, 1);
-
-        const c = vv * ss;
-        const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
-        const m = vv - c;
-
-        let rr = 0, gg = 0, bb = 0;
-        if (hh < 60) [rr, gg, bb] = [c, x, 0];
-        else if (hh < 120) [rr, gg, bb] = [x, c, 0];
-        else if (hh < 180) [rr, gg, bb] = [0, c, x];
-        else if (hh < 240) [rr, gg, bb] = [0, x, c];
-        else if (hh < 300) [rr, gg, bb] = [x, 0, c];
-        else [rr, gg, bb] = [c, 0, x];
-
-        return {
-            r: (rr + m) * 255,
-            g: (gg + m) * 255,
-            b: (bb + m) * 255
-        };
-    }
-
-    static #linearRgbToOklab({ r, g, b }) {
-        const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
-        const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
-        const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
-
-        const l_ = Math.cbrt(l);
-        const m_ = Math.cbrt(m);
-        const s_ = Math.cbrt(s);
-
-        return {
-            l: 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
-            a: 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
-            b: 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
-        };
-    }
-
-    static #oklabToLinearRgb({ l, a, b }) {
-        const l_ = l + 0.3963377774 * a + 0.2158037573 * b;
-        const m_ = l - 0.1055613458 * a - 0.0638541728 * b;
-        const s_ = l - 0.0894841775 * a - 1.2914855480 * b;
-
-        const ll = l_ ** 3;
-        const mm = m_ ** 3;
-        const ss = s_ ** 3;
-
-        return {
-            r: 4.0767416621 * ll - 3.3077115913 * mm + 0.2309699292 * ss,
-            g: -1.2684380046 * ll + 2.6097574011 * mm - 0.3413193965 * ss,
-            b: -0.0041960863 * ll - 0.7034186147 * mm + 1.7076147010 * ss
-        };
-    }
-
-    static #labToOklab({ l, a, b }) {
-        const xyz = Color.#labToXyz({ l, a, b });
-        const lin = Color.#xyzToLinearRgb(xyz);
-        return Color.#linearRgbToOklab(lin);
-    }
-
-    static #oklabToLab({ l, a, b }) {
-        const lin = Color.#oklabToLinearRgb({ l, a, b });
-        const xyz = Color.#linearRgbToXyz(lin);
-        return Color.#xyzToLab(xyz);
-    }
-
-    static #oklabToOklch({ l, a, b }) {
-        const c = Math.sqrt(a * a + b * b);
-        const h = Color.#normHueDeg(Math.atan2(b, a) * (180 / Math.PI));
-        return { l, c, h };
-    }
-
-    static #oklchToOklab({ l, c, h }) {
-        const hr = Color.#normHueDeg(h) * (Math.PI / 180);
-        return {
-            l,
-            a: c * Math.cos(hr),
-            b: c * Math.sin(hr)
-        };
     }
 
     #setLab(nextLab) {
@@ -490,7 +235,6 @@ class Color {
     set alpha(value) {
         const v = (typeof value === 'function') ? Number(value) : value;
         this.#alpha = Color.#parseAlpha(v);
-        return true;
     }
 
     get lab() {
@@ -505,22 +249,22 @@ class Color {
         }
 
         const css = () => {
-            const lPct = `${Color.#formatNumber(Color.#clamp(parent.#lab.l, 0, 100), 4)}%`;
-            const aVal = Color.#formatNumber(proxy.a, 4);
-            const bVal = Color.#formatNumber(proxy.b, 4);
-            const alphaVal = Color.#formatNumber(parent.alpha, 4);
+            const lPct = `${formatNumber(clamp(parent.#lab.l, 0, 100), 4)}%`;
+            const aVal = formatNumber(proxy.a, 4);
+            const bVal = formatNumber(proxy.b, 4);
+            const alphaVal = formatNumber(parent.alpha, 4);
             return `lab(${lPct} ${aVal} ${bVal} / ${alphaVal})`;
         }
 
         const proxy = new Proxy(target, {
-            get(target, prop) {
+            get(_, prop) {
                 if (prop === "toString" || prop === "css") return css;
                 if (prop === Symbol.toPrimitive) return () => css();
                 if (prop === 'alpha') return parent.alpha;
                 if (prop === 'l') return parent.#lab.l / 100;
                 return parent.#lab[prop];
             },
-            set(target, prop, value) {
+            set(_, prop, value) {
                 try {
                     if (prop === 'alpha') {
                         parent.alpha = value;
@@ -570,7 +314,7 @@ class Color {
                 this.parent = parent;
             },
             get(prop) {
-                const { r, g, b } = Color.#labToRgb(this.parent.#lab);
+                const { r, g, b } = labToRgb(this.parent.#lab);
                 if (prop === 'r') return r;
                 if (prop === 'g') return g;
                 if (prop === 'b') return b;
@@ -578,7 +322,7 @@ class Color {
                 return undefined;
             },
             set(prop, value) {
-                const current = { ...Color.#labToRgb(this.parent.#lab) };
+                const current = { ...labToRgb(this.parent.#lab) };
 
                 if (prop === 'alpha') {
                     this.parent.alpha = value;
@@ -586,23 +330,23 @@ class Color {
                 }
 
                 if (!['r', 'g', 'b'].includes(prop)) return;
-                if (!Color.#isFiniteNumber(value)) throw new TypeError('RGB channels must be Number');
+                if (!isFiniteNumber(value)) throw new TypeError('RGB channels must be Number');
                 current[prop] = value;
-                const nextLab = Color.#rgbToLab(current);
+                const nextLab = rgbToLab(current);
                 this.parent.#setLab(nextLab);
             },
             call(args) {
                 const [r, g, b, alpha = this.parent.alpha] = args;
-                const nextLab = Color.#rgbToLab({ r, g, b });
+                const nextLab = rgbToLab({ r, g, b });
                 this.parent.#setLab(nextLab);
                 this.parent.alpha = alpha;
             },
             toString() {
-                const { r, g, b } = Color.#labToRgb(this.parent.#lab);
-                const rr = Math.round(Color.#clamp(r, 0, 255));
-                const gg = Math.round(Color.#clamp(g, 0, 255));
-                const bb = Math.round(Color.#clamp(b, 0, 255));
-                const a = Color.#formatNumber(this.parent.alpha, 4);
+                const { r, g, b } = labToRgb(this.parent.#lab);
+                const rr = Math.round(clamp(r, 0, 255));
+                const gg = Math.round(clamp(g, 0, 255));
+                const bb = Math.round(clamp(b, 0, 255));
+                const a = formatNumber(this.parent.alpha, 4);
                 return `rgb(${rr} ${gg} ${bb} / ${a})`;
             }
         };
@@ -616,8 +360,8 @@ class Color {
                 this.parent = parent;
             },
             get(prop) {
-                const rgb = Color.#labToRgb(this.parent.#lab);
-                const hsv = Color.#rgbToHsv(rgb);
+                const rgb = labToRgb(this.parent.#lab);
+                const hsv = rgbToHsv(rgb);
                 if (prop === 'h') return hsv.h;
                 if (prop === 's') return hsv.s;
                 if (prop === 'v') return hsv.v;
@@ -630,43 +374,43 @@ class Color {
                     return;
                 }
 
-                const rgb = Color.#labToRgb(this.parent.#lab);
-                const current = Color.#rgbToHsv(rgb);
+                const rgb = labToRgb(this.parent.#lab);
+                const current = rgbToHsv(rgb);
 
                 if (prop === 'h') {
-                    if (!Color.#isFiniteNumber(value)) throw new TypeError('HSV.h must be Number');
+                    if (!isFiniteNumber(value)) throw new TypeError('HSV.h must be Number');
                     current.h = value;
                 } else if (prop === 's') {
-                    current.s = Color.#parseUnit01(value);
+                    current.s = Color.#parseValue01(value);
                 } else if (prop === 'v') {
-                    current.v = Color.#parseUnit01(value);
+                    current.v = Color.#parseValue01(value);
                 } else {
                     return;
                 }
 
-                const nextRgb = Color.#hsvToRgb(current);
-                const nextLab = Color.#rgbToLab(nextRgb);
+                const nextRgb = hsvToRgb(current);
+                const nextLab = rgbToLab(nextRgb);
                 this.parent.#setLab(nextLab);
             },
             call(args) {
                 const [h, s, v, alpha = this.parent.alpha] = args;
                 const hsv = {
                     h,
-                    s: Color.#parseUnit01(s),
-                    v: Color.#parseUnit01(v)
+                    s: Color.#parseValue01(s),
+                    v: Color.#parseValue01(v)
                 };
-                const nextRgb = Color.#hsvToRgb(hsv);
-                const nextLab = Color.#rgbToLab(nextRgb);
+                const nextRgb = hsvToRgb(hsv);
+                const nextLab = rgbToLab(nextRgb);
                 this.parent.#setLab(nextLab);
                 this.parent.alpha = alpha;
             },
             toString() {
-                const rgb = Color.#labToRgb(this.parent.#lab);
-                const { h, s, v } = Color.#rgbToHsv(rgb);
-                const hStr = Color.#formatNumber(h, 2);
-                const sPct = `${Color.#formatNumber(s * 100, 2)}%`;
-                const vPct = `${Color.#formatNumber(v * 100, 2)}%`;
-                const a = Color.#formatNumber(this.parent.alpha, 4);
+                const rgb = labToRgb(this.parent.#lab);
+                const { h, s, v } = rgbToHsv(rgb);
+                const hStr = formatNumber(h, 2);
+                const sPct = `${formatNumber(s * 100, 2)}%`;
+                const vPct = `${formatNumber(v * 100, 2)}%`;
+                const a = formatNumber(this.parent.alpha, 4);
                 // Note: `hsv()` is not a standard CSS function (placeholder string).
                 return `hsv(${hStr} ${sPct} ${vPct} / ${a})`;
             }
@@ -681,7 +425,7 @@ class Color {
                 this.parent = parent;
             },
             get(prop) {
-                const lch = Color.#labToLch(this.parent.#lab);
+                const lch = labToLch(this.parent.#lab);
                 if (prop === 'l') return lch.l / 100;
                 if (prop === 'c') return lch.c;
                 if (prop === 'h') return lch.h;
@@ -694,19 +438,19 @@ class Color {
                     return;
                 }
 
-                const current = Color.#labToLch(this.parent.#lab);
+                const current = labToLch(this.parent.#lab);
                 if (prop === 'l') current.l = Color.#parseLightness100(value);
                 else if (prop === 'c') {
-                    if (!Color.#isFiniteNumber(value)) throw new TypeError('LCH.c must be Number');
+                    if (!isFiniteNumber(value)) throw new TypeError('LCH.c must be Number');
                     current.c = Math.max(0, value);
                 }
                 else if (prop === 'h') {
-                    if (!Color.#isFiniteNumber(value)) throw new TypeError('LCH.h must be Number');
+                    if (!isFiniteNumber(value)) throw new TypeError('LCH.h must be Number');
                     current.h = value;
                 }
                 else return;
 
-                const nextLab = Color.#lchToLab(current);
+                const nextLab = lchToLab(current);
                 this.parent.#setLab(nextLab);
             },
             call(args) {
@@ -716,16 +460,16 @@ class Color {
                     c: Math.max(0, c),
                     h
                 };
-                const nextLab = Color.#lchToLab(lch);
+                const nextLab = lchToLab(lch);
                 this.parent.#setLab(nextLab);
                 this.parent.alpha = alpha;
             },
             toString() {
-                const { l, c, h } = Color.#labToLch(this.parent.#lab);
-                const lPct = `${Color.#formatNumber(Color.#clamp(l, 0, 100), 4)}%`;
-                const cStr = Color.#formatNumber(c, 4);
-                const hStr = Color.#formatNumber(h, 2);
-                const a = Color.#formatNumber(this.parent.alpha, 4);
+                const { l, c, h } = labToLch(this.parent.#lab);
+                const lPct = `${formatNumber(clamp(l, 0, 100), 4)}%`;
+                const cStr = formatNumber(c, 4);
+                const hStr = formatNumber(h, 2);
+                const a = formatNumber(this.parent.alpha, 4);
                 return `lch(${lPct} ${cStr} ${hStr} / ${a})`;
             }
         };
@@ -739,10 +483,10 @@ class Color {
                 this.parent = parent;
             },
             get(prop) {
-                const oklab = Color.#labToOklab(this.parent.#lab);
-                if (prop === 'l') return oklab.l;
-                if (prop === 'a') return oklab.a;
-                if (prop === 'b') return oklab.b;
+                const ok = labToOklab(this.parent.#lab);
+                if (prop === 'l') return ok.l;
+                if (prop === 'a') return ok.a;
+                if (prop === 'b') return ok.b;
                 if (prop === 'alpha') return this.parent.alpha;
                 return undefined;
             },
@@ -752,38 +496,38 @@ class Color {
                     return;
                 }
 
-                const current = Color.#labToOklab(this.parent.#lab);
-                if (prop === 'l') current.l = Color.#parseUnit01(value);
+                const current = labToOklab(this.parent.#lab);
+                if (prop === 'l') current.l = Color.#parseValue01(value);
                 else if (prop === 'a') {
-                    if (!Color.#isFiniteNumber(value)) throw new TypeError('OKLab.a must be Number');
+                    if (!isFiniteNumber(value)) throw new TypeError('OKLab.a must be Number');
                     current.a = value;
                 }
                 else if (prop === 'b') {
-                    if (!Color.#isFiniteNumber(value)) throw new TypeError('OKLab.b must be Number');
+                    if (!isFiniteNumber(value)) throw new TypeError('OKLab.b must be Number');
                     current.b = value;
                 }
                 else return;
 
-                const nextLab = Color.#oklabToLab(current);
+                const nextLab = oklabToLab(current);
                 this.parent.#setLab(nextLab);
             },
             call(args) {
                 const [l, a, b, alpha = this.parent.alpha] = args;
                 const oklab = {
-                    l: Color.#parseUnit01(l),
+                    l: Color.#parseValue01(l),
                     a,
                     b
                 };
-                const nextLab = Color.#oklabToLab(oklab);
+                const nextLab = oklabToLab(oklab);
                 this.parent.#setLab(nextLab);
                 this.parent.alpha = alpha;
             },
             toString() {
-                const { l, a, b } = Color.#labToOklab(this.parent.#lab);
-                const lPct = `${Color.#formatNumber(l * 100, 4)}%`;
-                const aStr = Color.#formatNumber(a, 5);
-                const bStr = Color.#formatNumber(b, 5);
-                const alpha = Color.#formatNumber(this.parent.alpha, 4);
+                const { l, a, b } = labToOklab(this.parent.#lab);
+                const lPct = `${formatNumber(l * 100, 4)}%`;
+                const aStr = formatNumber(a, 5);
+                const bStr = formatNumber(b, 5);
+                const alpha = formatNumber(this.parent.alpha, 4);
                 return `oklab(${lPct} ${aStr} ${bStr} / ${alpha})`;
             }
         };
@@ -797,8 +541,8 @@ class Color {
                 this.parent = parent;
             },
             get(prop) {
-                const oklab = Color.#labToOklab(this.parent.#lab);
-                const oklch = Color.#oklabToOklch(oklab);
+                const oklab = labToOklab(this.parent.#lab);
+                const oklch = oklabToOklch(oklab);
                 if (prop === 'l') return oklch.l;
                 if (prop === 'c') return oklch.c;
                 if (prop === 'h') return oklch.h;
@@ -811,43 +555,43 @@ class Color {
                     return;
                 }
 
-                const oklab = Color.#labToOklab(this.parent.#lab);
-                const current = Color.#oklabToOklch(oklab);
+                const ok = labToOklab(this.parent.#lab);
+                const current = oklabToOklch(ok);
 
-                if (prop === 'l') current.l = Color.#parseUnit01(value);
+                if (prop === 'l') current.l = Color.#parseValue01(value);
                 else if (prop === 'c') {
-                    if (!Color.#isFiniteNumber(value)) throw new TypeError('OKLCH.c must be Number');
+                    if (!isFiniteNumber(value)) throw new TypeError('OKLCH.c must be Number');
                     current.c = Math.max(0, value);
                 }
                 else if (prop === 'h') {
-                    if (!Color.#isFiniteNumber(value)) throw new TypeError('OKLCH.h must be Number');
+                    if (!isFiniteNumber(value)) throw new TypeError('OKLCH.h must be Number');
                     current.h = value;
                 }
                 else return;
 
-                const nextOkLab = Color.#oklchToOklab(current);
-                const nextLab = Color.#oklabToLab(nextOkLab);
+                const nextOkLab = oklchToOklab(current);
+                const nextLab = oklabToLab(nextOkLab);
                 this.parent.#setLab(nextLab);
             },
             call(args) {
                 const [l, c, h, alpha = this.parent.alpha] = args;
-                const oklch = {
-                    l: Color.#parseUnit01(l),
+                const oklchVal = {
+                    l: Color.#parseValue01(l),
                     c: Math.max(0, c),
                     h
                 };
-                const nextOkLab = Color.#oklchToOklab(oklch);
-                const nextLab = Color.#oklabToLab(nextOkLab);
+                const nextOkLab = oklchToOklab(oklchVal);
+                const nextLab = oklabToLab(nextOkLab);
                 this.parent.#setLab(nextLab);
                 this.parent.alpha = alpha;
             },
             toString() {
-                const oklab = Color.#labToOklab(this.parent.#lab);
-                const { l, c, h } = Color.#oklabToOklch(oklab);
-                const lPct = `${Color.#formatNumber(l * 100, 4)}%`;
-                const cStr = Color.#formatNumber(c, 5);
-                const hStr = Color.#formatNumber(h, 2);
-                const alpha = Color.#formatNumber(this.parent.alpha, 4);
+                const ok = labToOklab(this.parent.#lab);
+                const { l, c, h } = oklabToOklch(ok);
+                const lPct = `${formatNumber(l * 100, 4)}%`;
+                const cStr = formatNumber(c, 5);
+                const hStr = formatNumber(h, 2);
+                const alpha = formatNumber(this.parent.alpha, 4);
                 return `oklch(${lPct} ${cStr} ${hStr} / ${alpha})`;
             }
         };
